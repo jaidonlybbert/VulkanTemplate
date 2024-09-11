@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 
+include(FetchContent)
+
 set(NAME VulkanTemplate)
 
 project(${NAME})
@@ -12,7 +14,10 @@ include_directories(external/imgui)
 include_directories(external/tinygltf)
 include_directories(external/volk)
 include_directories(external/dxc)
-# include_directories(external/tracy)
+include_directories(external/tracy)
+include_directories(external/ktx/include)
+include_directories(external/ktx/other_include)
+include_directories(external/ktx/lib)
 include_directories(base)
 include_directories(base/utilities)
 include_directories(base/wrappers)

@@ -11,6 +11,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <SFML/Window/Keyboard.hpp>
 
 class Camera
 {
@@ -87,6 +88,7 @@ public:
 	glm::vec3 torque;
 	glm::vec3 angularAcceleration;
 	glm::vec3 angularVelocity;
+	glm::vec3 targetAngularVelocity;
 
 	bool flipY = false;
 
@@ -111,9 +113,12 @@ public:
 	struct Mouse {
 		struct Buttons {
 			bool left;
+			bool right;
 		} buttons;
 		glm::vec2 cursorPos;
+		glm::vec2 cursorPosNDC;
 		bool dragging = false;
+		bool cursorLock = true;
 		glm::vec2 dragCursorPos;
 	} mouse{};
 
@@ -208,51 +213,99 @@ public:
 
 			//glm::vec3 camSide = glm::cross(camFront, camUp);
 
-			float moveSpeed = deltaTime * movementSpeed * 2.5f;
+			float moveSpeed = deltaTime * movementSpeed * 10.0f;
+			if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift)) {
+				moveSpeed *= 2.5f;
+			}
 
-			acceleration = angularAcceleration = glm::vec3(0.0f);
+			acceleration = angularAcceleration = targetAngularVelocity = glm::vec3(0.0f);
 
 			if (physicsBased) {
-				if (keys.forward) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::W)) {
 					acceleration = camForward * moveSpeed;
 				}
-				if (keys.backward) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) {
 					acceleration = camForward * -moveSpeed;
 				}
-				if (keys.left) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::A)) {
 					acceleration = camRight * -moveSpeed;
 				}
-				if (keys.right) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::D)) {
 					acceleration = camRight * moveSpeed;
 				}
-				if (keys.up) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Space)) {
 					acceleration = camUp * -moveSpeed;
 				}
-				if (keys.down) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::LControl)) {
 					acceleration = camUp * moveSpeed;
 				}
 
-				float rollSpeed = rotationSpeed * 0.005f;
-				if (keys.rollLeft) {
+				float rollSpeed = rotationSpeed * deltaTime * 0.5f;
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Q)) {
 					angularAcceleration.z = -rollSpeed;
 				}
-				if (keys.rollRight) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::E)) {
 					angularAcceleration.z = rollSpeed;
 				}
 
-				if (mouse.dragging) {
-					float rotateSpeed = rotationSpeed * deltaTime * 0.0025f;
-					glm::vec2 delta = (mouse.cursorPos - mouse.dragCursorPos);
+				if (mouse.cursorLock) {
+					float rotateSpeed = rotationSpeed * deltaTime * 3.5f;
+					glm::vec2 delta = mouse.cursorPosNDC - glm::vec2(0.5f, 0.5f);
 					if (abs(glm::length(delta)) > 0.1f) {
-						angularAcceleration.x = -delta.y * rotateSpeed;
-						angularAcceleration.y = delta.x * rotateSpeed;
+						targetAngularVelocity.x = -delta.y * rotateSpeed;
+						targetAngularVelocity.y = delta.x * rotateSpeed;
 					}
+				}
+
+				float changeSpeed = 0.005f;
+				if (angularVelocity.y < targetAngularVelocity.y) {
+					angularVelocity.y += deltaTime * changeSpeed;
+					if (angularVelocity.y > targetAngularVelocity.y) {
+						angularVelocity.y = targetAngularVelocity.y;
+					}
+				}
+				if (angularVelocity.y > targetAngularVelocity.y) {
+					angularVelocity.y -= deltaTime * changeSpeed;
+					if (angularVelocity.y < targetAngularVelocity.y) {
+						angularVelocity.y = targetAngularVelocity.y;
+					}
+				}
+				if (angularVelocity.x < targetAngularVelocity.x) {
+					angularVelocity.x += deltaTime * changeSpeed;
+					if (angularVelocity.x > targetAngularVelocity.x) {
+						angularVelocity.x = targetAngularVelocity.x;
+					}
+				}
+				if (angularVelocity.x > targetAngularVelocity.x) {
+					angularVelocity.x -= deltaTime * changeSpeed;
+					if (angularVelocity.x < targetAngularVelocity.x) {
+						angularVelocity.x = targetAngularVelocity.x;
+					}
+				}
+
+
+				//  @todo
+				const float maxVelocity = 0.01f;
+
+				if (angularVelocity.x > maxVelocity) {
+					angularVelocity.x = maxVelocity;
+				}
+				if (angularVelocity.y > maxVelocity) {
+					angularVelocity.y = maxVelocity;
+				}
+
+				//  @todo
+				if (angularVelocity.x < -maxVelocity) {
+					angularVelocity.x = -maxVelocity;
+				}
+				if (angularVelocity.y < -maxVelocity) {
+					angularVelocity.y = -maxVelocity;
 				}
 
 				// Integrate
 				velocity = velocity + acceleration * deltaTime;
 				if (glm::length(acceleration) == 0.0f) {
-					velocity -= velocity * 0.999f * deltaTime;
+					velocity -= velocity * 0.9999f * deltaTime;
 				}
 
 				angularVelocity = angularVelocity + angularAcceleration * deltaTime;
@@ -269,36 +322,36 @@ public:
 			else {
 				float movementSpeed = moveSpeed * deltaTime * 300.0f;
 
-				if (keys.forward) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::W)) {
 					position += camForward * movementSpeed;
 				}
-				if (keys.backward) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) {
 					position += camForward * -movementSpeed;
 				}
-				if (keys.left) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::A)) {
 					position += camRight * -movementSpeed;
 				}
-				if (keys.right) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::D)) {
 					position += camRight * movementSpeed;
 				}
-				if (keys.up) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::LShift)) {
 					position += camUp * -movementSpeed;
 				}
-				if (keys.down) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::LControl)) {
 					position += camUp * movementSpeed;
 				}
 
 				float rollSpeed = rotationSpeed * deltaTime * 0.5f;
-				if (keys.rollLeft) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Q)) {
 					rotation *= glm::angleAxis(-rollSpeed, camForward);
 				}
-				if (keys.rollRight) {
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::E)) {
 					rotation *= glm::angleAxis(rollSpeed, camForward);
 				}
 
-				if (mouse.buttons.left) {
-					float rotateSpeed = rotationSpeed * deltaTime * 0.005f;
-					glm::vec2 delta = mouse.cursorPos - mouse.dragCursorPos;
+				if (mouse.cursorLock) {
+					float rotateSpeed = rotationSpeed * deltaTime * 3.5f;
+					glm::vec2 delta = mouse.cursorPosNDC - glm::vec2(0.5f, 0.5f);
 					if (abs(glm::length(delta)) > 0.1f) {
 						rotation *= glm::angleAxis(delta.x * rotateSpeed, axis.positiveY);
 						rotation *= glm::angleAxis(-delta.y * rotateSpeed, camRight);
@@ -330,7 +383,7 @@ public:
 			camFront.z = cos(glm::radians(rotation.x)) * cos(glm::radians(rotation.y));
 			camFront = glm::normalize(camFront);
 
-			float moveSpeed = deltaTime * movementSpeed * 2.0f;
+			float moveSpeed = deltaTime * movementSpeed * 5.0f;
 			float rotSpeed = deltaTime * rotationSpeed * 50.0f;
 
 			// Move

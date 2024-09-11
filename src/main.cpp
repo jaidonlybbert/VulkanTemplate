@@ -9,6 +9,7 @@
 #include "FileWatcher.hpp"
 #include <VulkanApplication.h>
 #include "AssetManager.h"
+#include "AudioManager.h"
 #include "Texture.hpp"
 #include "glTF.h"
 #include <glm/gtc/type_ptr.hpp>
@@ -17,6 +18,7 @@
 #include <random>
 #include "time.h"
 #include "Frustum.hpp"
+#include <SFML/Audio.hpp>
 
 // @todo: audio (music and sfx)
 // @todo: sync2 everywhere
@@ -50,6 +52,7 @@ uint32_t skyboxIndex{ 0 };
 
 ActorManager* actorManager{ nullptr };
 AssetManager* assetManager{ nullptr };
+AudioManager* audioManager{ nullptr };
 Actor* ship{ nullptr };
 
 const float zFar = 1024.0f * 8.0f;
@@ -85,6 +88,8 @@ private:
 	DescriptorSetLayout* descriptorSetLayoutTextures;
 	DescriptorSet* descriptorSetTextures;
 	std::unordered_map<std::string, Pipeline*> pipelines;
+	sf::Music backgroundMusic;
+	float firingTimer;
 public:	
 	Application() : VulkanApplication() {
 		apiVersion = VK_API_VERSION_1_3;
@@ -104,6 +109,7 @@ public:
 
 		assetManager = new AssetManager();
 		actorManager = new ActorManager();
+		audioManager = new AudioManager();
 
 		ApplicationContext::assetManager = assetManager;
 
@@ -125,12 +131,19 @@ public:
 		delete descriptorSetLayout;
 		delete assetManager;
 		delete actorManager;
+
+		// @todo: move to manager class
+		if (backgroundMusic.Playing) {
+			backgroundMusic.stop();
+		}
+		delete audioManager;
 	}
 
 	void loadAssets() {
 		const std::map<std::string, std::string> files = {
 			{ "crate", "models/crate_up.glb" },
 			{ "asteroid", "models/asteroid.glb" },
+			{ "moon", "models/moon.gltf" },
 			{ "spaceship", "models/spaceship/scene_ktx.gltf" },
 			{ "bullet", "models/bullet.glb" }
 		};
@@ -165,6 +178,15 @@ public:
 			.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
 			.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE
 		}));
+
+		// Audio
+		const std::map<std::string, std::string> soundFiles = {
+			{ "laser", "sounds/laser1.mp3" }
+		};
+
+		for (auto& it : soundFiles) {
+			audioManager->AddSoundFile(it.first, getAssetPath() + it.second);
+		}
 	}
 
 	void prepare() {
@@ -179,7 +201,8 @@ public:
 		// @todo: move camera out of vulkanapplication (so we can have multiple cameras)
 		camera.type = Camera::CameraType::firstperson;
 		camera.setPerspective(45.0f, (float)width / (float)height, 0.1f, zFar);
-		camera.setPosition({ 0.0f, 0.0f, 0.0f });
+		camera.setPosition({ 0.0f, -30.0f, 80.0f });
+//		camera.setPosition({ 0.0f, 0.0f, 60.0f });
 
 		//playerShip.localPosition = { 0.0f, 8.0f, -30.0f };
 		//playerShip.localPosition = { 0.0f, 0.0f, 0.0f };
@@ -398,41 +421,89 @@ public:
 			.enableHotReload = true
 		});
 
-		ship = actorManager->addActor("playership", new Actor({
-			.position = glm::vec3(0.0f),
-			.rotation = glm::vec3(0.0f),
-			.scale = glm::vec3(0.5f),
-			.model = assetManager->models["spaceship"]
-		}));
+		//ship = actorManager->addActor("playership", new Actor({
+		//	.position = glm::vec3(0.0f),
+		//	.rotation = glm::vec3(0.0f),
+		//	.scale = glm::vec3(0.5f),
+		//	.model = assetManager->models["spaceship"]
+		//}));
 
-		actorManager->addActor("orientation_crate", new Actor({
-			.position = glm::vec3(0.0f, 0.0f, -15.0f),
-			.rotation = glm::vec3(0.0f),
-			.scale = glm::vec3(0.5f),
-			.model = assetManager->models["crate"],
-		}));
+		//actorManager->addActor("orientation_crate", new Actor({
+		//	.position = glm::vec3(0.0f, 0.0f, -15.0f),
+		//	.rotation = glm::vec3(0.0f),
+		//	.scale = glm::vec3(0.5f),
+		//	.model = assetManager->models["crate"],
+		//}));
 
 		// Set up a grid of asteroids for testing purposes
 		std::default_random_engine rndGenerator((unsigned)time(nullptr));
-		std::uniform_real_distribution<float> uniformDist(-1.0f, 1.0f);
-		const int r = 8;
-		const float s = 8.0f;
+		//std::uniform_real_distribution<float> uniformDist(-1.0f, 1.0f);
+		//const int r = 8;
+		//const float s = 8.0f;
 		uint32_t a_idx = 0;
-		for (int32_t x = -r; x < r; x++) {
-			for (int32_t y = -r; y < r; y++) {
-				for (int32_t z = -r; z < r; z++) {
-					glm::vec3 rndOffset = glm::vec3(uniformDist(rndGenerator), uniformDist(rndGenerator), uniformDist(rndGenerator)) * 2.5f;
-					actorManager->addActor("asteroid" + std::to_string(a_idx), new Actor({
-						.position = (glm::vec3(x, y, z) + rndOffset) * s,
-						.rotation = glm::vec3(360.0f * uniformDist(rndGenerator), 360.0f * uniformDist(rndGenerator), 360.0f * uniformDist(rndGenerator)),
-						.scale = glm::vec3(5.0f + uniformDist(rndGenerator) * 2.5f - uniformDist(rndGenerator) * 2.5f),
-						.model = assetManager->models["asteroid"],
-						.tag = "asteroid"
-					}));
-					a_idx++;
-				}
-			}
+		//for (int32_t x = -r; x < r; x++) {
+		//	for (int32_t y = -r; y < r; y++) {
+		//		for (int32_t z = -r; z < r; z++) {
+		//			glm::vec3 rndOffset = glm::vec3(uniformDist(rndGenerator), uniformDist(rndGenerator), uniformDist(rndGenerator)) * 5.0f;
+		//			actorManager->addActor("asteroid" + std::to_string(a_idx), new Actor({
+		//				.position = (glm::vec3(x, y, z) + rndOffset) * s,
+		//				.rotation = glm::vec3(360.0f * uniformDist(rndGenerator), 360.0f * uniformDist(rndGenerator), 360.0f * uniformDist(rndGenerator)),
+		//				.scale = glm::vec3(5.0f + uniformDist(rndGenerator) * 2.5f - uniformDist(rndGenerator) * 2.5f),
+		//				.model = assetManager->models["asteroid"],
+		//				.tag = "asteroid"
+		//			}));
+		//			a_idx++;
+		//		}
+		//	}
+		//}
+
+		const uint32_t asteroidCount = 8192;
+
+		std::uniform_real_distribution<float> uniformDist(0.0, 1.0);
+
+		// Distribute rocks randomly on two different rings
+		for (auto i = 0; i < asteroidCount / 2; i++) {
+			glm::vec2 ring0{ 7.0f, 16.0f };
+			glm::vec2 ring1{ 14.0f, 24.0f };
+
+			ring0 *= 10.0f;
+			ring1 *= 15.0f;
+
+			float rho, theta;
+
+
+			// Inner ring
+			rho = sqrt((pow(ring0[1], 2.0f) - pow(ring0[0], 2.0f)) * uniformDist(rndGenerator) + pow(ring0[0], 2.0f));
+			theta = static_cast<float>(2.0f * M_PI * uniformDist(rndGenerator));
+			actorManager->addActor("asteroid" + std::to_string(a_idx), new Actor({
+				.position = glm::vec3(rho * cos(theta), uniformDist(rndGenerator) * 16.0f, rho * sin(theta)),
+				.rotation = glm::vec3(360.0f * uniformDist(rndGenerator), 360.0f * uniformDist(rndGenerator), 360.0f * uniformDist(rndGenerator)),
+				.scale = glm::vec3(5.0f + uniformDist(rndGenerator) * 2.5f - uniformDist(rndGenerator) * 2.5f),
+				.model = assetManager->models["asteroid"],
+				.tag = "asteroid"
+			}));
+			a_idx++;
+
+			// Outer ring
+			rho = sqrt((pow(ring1[1], 2.0f) - pow(ring1[0], 2.0f)) * uniformDist(rndGenerator) + pow(ring1[0], 2.0f));
+			theta = static_cast<float>(2.0f * M_PI * uniformDist(rndGenerator));
+			actorManager->addActor("asteroid" + std::to_string(a_idx), new Actor({
+				.position = glm::vec3(rho * cos(theta), uniformDist(rndGenerator) * 16.0f, rho * sin(theta)),
+				.rotation = glm::vec3(360.0f * uniformDist(rndGenerator), 360.0f * uniformDist(rndGenerator), 360.0f * uniformDist(rndGenerator)),
+				.scale = glm::vec3(5.0f + uniformDist(rndGenerator) * 2.5f - uniformDist(rndGenerator) * 2.5f),
+				.model = assetManager->models["asteroid"],
+				.tag = "asteroid"
+				}));
+			a_idx++;
 		}
+
+		actorManager->addActor("moon", new Actor({
+			.position = glm::vec3(0.0f, 0.0f, 0.0f),
+			.rotation = glm::vec3(0.0f),
+			.scale = glm::vec3(5.0f),
+			.model = assetManager->models["moon"],
+			.tag = "moon"
+		}));
 
 		pipelineList.push_back(pipelines["skybox"]);
 		pipelineList.push_back(pipelines["playership"]);
@@ -446,6 +517,13 @@ public:
 		};
 		fileWatcher->start();
 
+		// @todo
+		if (backgroundMusic.openFromFile(getAssetPath() + "music/singularity_calm.mp3")) {
+			backgroundMusic.setVolume(30);
+			backgroundMusic.play();
+		} else {
+			std::cout << "Could not load background music track\n";
+		}
 		prepared = true;
 	}
 
@@ -892,12 +970,13 @@ public:
 		
 		cb->bindPipeline(pipelines["gltf"]);
 		
+		// @todo: instancing
 		vkglTF::Model* lastBoundModel{ nullptr };
 		visibleObjects = 0;
 		auto modelChanges = 0;
 		for (auto& it : actorManager->actors) {
 			auto actor = it.second;
-			if (frustum.checkSphere(actor->position, actor->getRadius())) {
+			if (frustum.checkSphere(actor->position, actor->getRadius() * 2.0f)) {
 				if (actor->model != lastBoundModel) {
 					lastBoundModel = actor->model;
 					actor->model->bindBuffers(cb->handle);
@@ -935,6 +1014,7 @@ public:
 
 		camera.mouse.buttons.left = mouseButtons.left;
 		camera.mouse.cursorPos = mousePos;
+		camera.mouse.cursorPosNDC = (mousePos / glm::vec2(float(width), float(height)));
 
 		FrameObjects currentFrame = frameObjects[getCurrentFrameIndex()];
 		VulkanApplication::prepareFrame(currentFrame);
@@ -971,11 +1051,30 @@ public:
 			}
 		}
 
+		// @todo
+		if (sf::Mouse::isButtonPressed(sf::Mouse::Left) && firingTimer <= 0.0f) {
+			// @todo: test
+			actorManager->addActor("bullet" + std::to_string(actorManager->actors.size() + 1), new Actor({
+				.position = glm::vec3(camera.position),
+				.rotation = glm::vec3(0.0f),
+				.scale = glm::vec3(0.5f),
+				.model = assetManager->models["bullet"],
+				.tag = "bullet",
+				// @todo: velocity from player ship
+				.constantVelocity = glm::vec3(camera.getForward()) * 100.0f
+				}));
+			audioManager->PlaySnd("laser");
+			firingTimer = 1.0f;
+		}
+		firingTimer -= frameTimer;
+
 		//time += frameTimer;
 	}
 
 	void OnUpdateOverlay(vks::UIOverlay& overlay) {
 		overlay.text("visible objects: %d", visibleObjects);
+		overlay.text("Angular velocity: %.6f, %.6f", camera.angularVelocity.x, camera.angularVelocity.y);
+		//overlay.text("Cursor NDC: %.2f, %.2f", camera.mouse.cursorPosNDC.x, camera.mouse.cursorPosNDC.y);
 	}
 
 	void onFileChanged(const std::string filename, const std::vector<void*> owners) {
@@ -994,19 +1093,14 @@ public:
 
 	virtual void keyPressed(uint32_t key)
 	{
-		if (key == KEY_P) {
+		if (key == sf::Keyboard::P) {
 			camera.physicsBased = !camera.physicsBased;
 		}
-		if (key == 0x43) {
-			// @todo: test
-			actorManager->addActor("bullet" + std::to_string(actorManager->actors.size() + 1), new Actor({
-				.position = glm::vec3(camera.position),
-				.rotation = glm::vec3(0.0f),
-				.scale = glm::vec3(0.5f),
-				.model = assetManager->models["bullet"],
-				.tag = "bullet",
-				.constantVelocity = glm::vec3(camera.getForward()) * 50.0f
-			}));
+		if (key == sf::Keyboard::C) {
+			camera.mouse.cursorLock = !camera.mouse.cursorLock;
+		}
+		if (key == sf::Keyboard::L) {
+			camera.mouse.cursorLock = !camera.mouse.cursorLock;
 		}
 	}
 
@@ -1016,17 +1110,7 @@ Application* vulkanApplication;
 // Main entry points
 
 #if defined(_WIN32)
-
 // Windows entry point
-LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-	if (vulkanApplication != NULL)
-	{
-		vulkanApplication->handleMessages(hWnd, uMsg, wParam, lParam);
-	}
-	return (DefWindowProc(hWnd, uMsg, wParam, lParam));
-}
-
 int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nShowmd)
 {
 	for (int32_t i = 0; i < __argc; i++) { 
@@ -1034,7 +1118,7 @@ int APIENTRY WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
 	};
 	vulkanApplication = new Application();
 	vulkanApplication->initVulkan();
-	vulkanApplication->setupWindow(hInstance, WndProc);
+	vulkanApplication->setupWindow();
 	vulkanApplication->prepare();
 	vulkanApplication->renderLoop();
 	delete(vulkanApplication);
