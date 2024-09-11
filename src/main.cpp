@@ -107,7 +107,7 @@ public:
 
 		ApplicationContext::assetManager = assetManager;
 
-		dxcCompiler = new Dxc();
+		// dxcCompiler = new Dxc();
 	}
 
 	~Application() {
@@ -1113,4 +1113,19 @@ int main(const int argc, const char *argv[])
 }
 
 #elif (defined(VK_USE_PLATFORM_IOS_MVK) || defined(VK_USE_PLATFORM_MACOS_MVK))
+VulkanApplication *vulkanApplication;
+int main(const int argc, const char *argv[])
+{
+	@autoreleasepool
+	{
+		for (size_t i = 0; i < argc; i++) { VulkanApplication::args.push_back(argv[i]); };
+		vulkanApplication = new VulkanApplication();
+		vulkanApplication->initVulkan();
+		vulkanApplication->setupWindow(nullptr);
+		vulkanApplication->prepare();
+		vulkanApplication->renderLoop();
+		delete(vulkanApplication);
+	}
+	return 0;
+}
 #endif
